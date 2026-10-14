@@ -1,157 +1,92 @@
-![License](https://img.shields.io/badge/License-GPLv3-blue.svg)
-![Build Status](https://img.shields.io/badge/Build-Passing-success.svg)
-![ROS2](https://img.shields.io/badge/ROS2-Humble-blue.svg)
-![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)
+# ORB-SLAM3 稠密 RGB-D · ROS 2 Humble
 
-## 【[简体中文版在此](README_CN.md)】
+基于 ORB-SLAM3 的 **RGB-D 视觉 SLAM + 稠密建图** ROS 2 功能包（`orbslam3_dense_ros2`），
+在 **Intel RealSense D455** 上完成适配与实测：实时输出相机/车体位姿、轨迹与**稠密彩色点云**。
 
-# orbslam3_dense_ros2 (Dense mapping extension of ORB-SLAM3)
+> - 上游项目英文 README：[`README_UPSTREAM.md`](README_UPSTREAM.md)
+> - 上游简体中文 README：[`README_CN.md`](README_CN.md)
+> - 本工作区完整安装/调试/排错记录：[`docs/orbslam3_dense_ros2_setup.md`](docs/orbslam3_dense_ros2_setup.md)
 
-## Introduction
+## 特性
 
-This project is a modified version of ORB-SLAM3 that adds dense mapping functionality. It was tested using an Intel machine and NVIDIA Jetson Orin NX, and was developed/tested with ROS 2 Humble.
+- 基于 ORB-SLAM3 的 RGB-D 视觉 SLAM，支持局部 BA、回环与重定位
+- 实时输出**稠密彩色点云** `/cloudPointMapping`
+- **一键启动**：RealSense 驱动 + 自动读取相机内参 + Pangolin 可视化 + RViz
+- 配套录制/回放/诊断/点云保存等脚本
 
-Key points:
+## 话题
 
-- Dense mapping is supported for RGB-D cameras. The provided example uses an Intel RealSense D455/D435 family camera.
-- The main ROS2 integration points are `src/ros2_slam_publisher.cpp` and `include/orbslam3_dense_ros2/ros2_slam_publisher.h` — modify these files to adapt the node to your setup.
-- `src/main.cpp` contains a usage example. Only RGB-D input supports the dense mapping feature in this repo.
+| 话题 | 类型 | 说明 |
+| --- | --- | --- |
+| `/camera_pose`、`/vehicle_pose` | `geometry_msgs/PoseStamped` | 相机 / 车体位姿 |
+| `/camera_path`、`/vehicle_path` | `nav_msgs/Path` | 轨迹 |
+| `/point_cloud_all`、`/point_cloud_ref` | `sensor_msgs/PointCloud2` | ORB 地图点 / 当前帧点 |
+| `/cloudPointMapping` | `sensor_msgs/PointCloud2` | 稠密建图点云 |
+| `/current_frame` | `sensor_msgs/Image` | 当前帧图像 |
 
-## Demo
+## 依赖
 
-# [![alt text](assets/image.png)](https://www.bilibili.com/video/BV1g8Y9zMEZ4/)
+- Ubuntu 22.04 + **ROS 2 Humble**
+- OpenCV、PCL、Eigen、**Pangolin**（可视化）、`cv_bridge`、`image_transport`、`pcl_ros`
+- Intel RealSense：`librealsense2` + `realsense2_camera`
 
-
-## Requirements and Installation
-
-This repository was developed against ROS 2 Humble. Follow the official ROS 2 Humble installation guide if you haven't installed ROS 2 yet:
-
-- https://docs.ros.org/en/humble/Installation.html
-
-Required external libraries and tools (high level):
-
-- Eigen3
-- Pangolin
-- OpenCV (this project was tested with OpenCV 4.10 built with CUDA support; you may build a CPU-only OpenCV if you prefer)
-
-Below are concise installation steps and notes.
-
-### Install Eigen3
+## 构建
 
 ```bash
-sudo apt install libeigen3-dev
+source /opt/ros/humble/setup.bash
+cd ~/ros2_ws
+colcon build --symlink-install --packages-select orbslam3_dense_ros2
+source install/setup.bash
 ```
 
-### Install Pangolin (v0.8)
+## 运行（RealSense D455 一键启动）
 
 ```bash
-cd ~
-git clone https://github.com/stevenlovegrove/Pangolin
-cd Pangolin
-git checkout v0.8
-mkdir build && cd build
-cmake ..
-make -j$(nproc)
-sudo make install
+# 驱动 + 自动内参 + SLAM（Pangolin 窗口）+ RViz
+ros2 launch orbslam3_dense_ros2 orbslam3_d455.launch.py
+
+# 不显示窗口（SSH / 无界面）
+ros2 launch orbslam3_dense_ros2 orbslam3_d455.launch.py rviz:=false enable_pangolin:=false
+
+# 驱动已在别处运行 / 用标称内参
+ros2 launch orbslam3_dense_ros2 orbslam3_d455.launch.py start_driver:=false auto_intrinsics:=false
 ```
 
-### Install dependencies for OpenCV
+## 辅助脚本（`scripts/`）
 
-Update packages and install build dependencies:
+- `run_d455_dense.sh` 一键运行
+- `record_d455.sh` / `replay_d455.sh` 录制 / 离线回放
+- `check_camera_streams.py` 流与特征诊断
+- `save_cloud.py` 把点云话题保存为 PCD
+- `make_d455_settings.py` 由 `camera_info` 生成内参配置
+- `test_rgbd_pattern.py` 合成 RGB-D 图源（无相机时）
+- `analyze_bag.py` 离线分析 bag
 
-```bash
-sudo apt update
-sudo apt upgrade -y
-sudo apt install -y build-essential cmake pkg-config unzip yasm git checkinstall \
-  libjpeg-dev libpng-dev libtiff-dev libavcodec-dev libavformat-dev libswscale-dev \
-  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libxvidcore-dev libx264-dev \
-  libmp3lame-dev libopus-dev libvorbis-dev ffmpeg libva-dev libdc1394-25 libdc1394-dev \
-  libxine2-dev libv4l-dev v4l-utils libgtk-3-dev libtbb-dev libatlas-base-dev gfortran \
-  libprotobuf-dev protobuf-compiler libgoogle-glog-dev libgflags-dev libgphoto2-dev \
-  libeigen3-dev libhdf5-dev doxygen
+## 稠密点云稳定性
+
+配置项 `DenseMap.freeze_pose`（默认 `true`）会**冻结关键帧插入时的位姿**，
+避免局部 BA / 回环更新位姿时旧点被重新投影，从而出现“旧点被重采并偏移/重影”。
+设为 `false` 则稠密图跟随回环整体校正（更一致，但会看到跳变）。
+
+## 目录结构
+
+```
+orbslam3_dense_ros2/
+├── CMakeLists.txt  package.xml  LICENSE  run_rgbd.sh
+├── include/  src/                 # 节点与库
+├── launch/orbslam3_d455.launch.py # 一键启动
+├── rviz/orbslam3_d455.rviz        # RViz 配置
+├── scripts/                       # 运行/录制/诊断/存点云脚本
+├── assets/
+├── orb_slam3/                     # ORB-SLAM3 源码 + Vocabulary + 配置
+└── docs/                          # 本工作区安装/调试记录
 ```
 
-Add a soft link required by some systems:
+## 许可
 
-```bash
-sudo ln -s /usr/include/libv4l1-videodev.h /usr/include/linux/videodev.h
-```
+GPL-3.0（沿用 ORB-SLAM3）。
 
-### Build OpenCV (example: 4.10 with CUDA)
+## 致谢
 
-Download and unpack OpenCV and opencv_contrib, then configure with CMake. Be sure to adjust the Python install path and CUDA_ARCH_BIN for your GPU.
-
-```bash
-cd ~
-mkdir -p opencv && cd opencv
-wget -O opencv.zip https://github.com/opencv/opencv/archive/refs/tags/4.10.0.zip
-wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/refs/tags/4.10.0.zip
-unzip opencv.zip
-unzip opencv_contrib.zip
-cd opencv-4.10.0
-mkdir build && cd build
-
-# Example cmake configuration — edit paths and CUDA_ARCH_BIN for your system
-cmake .. -D CMAKE_BUILD_TYPE=RELEASE \
-  -D CMAKE_INSTALL_PREFIX=/usr/local \
-  -D WITH_TBB=ON \
-  -D ENABLE_FAST_MATH=1 \
-  -D CUDA_FAST_MATH=1 \
-  -D WITH_CUBLAS=1 \
-  -D WITH_CUDA=ON \
-  -D BUILD_opencv_cudacodec=OFF \
-  -D WITH_CUDNN=ON \
-  -D OPENCV_DNN_CUDA=ON \
-  -D CUDA_ARCH_BIN=7.5 \
-  -D WITH_V4L=ON \
-  -D WITH_QT=OFF \
-  -D WITH_OPENGL=ON \
-  -D WITH_GSTREAMER=ON \
-  -D OPENCV_GENERATE_PKGCONFIG=ON \
-  -D OPENCV_PC_FILE_NAME=opencv.pc \
-  -D OPENCV_ENABLE_NONFREE=ON \
-  -D OPENCV_PYTHON3_INSTALL_PATH=~/.virtualenvs/opencv/lib/python3.12/site-packages/ \
-  -D PYTHON_EXECUTABLE=~/.virtualenvs/opencv/bin/python \
-  -D OPENCV_EXTRA_MODULES_PATH=~/Downloads/opencv/opencv_contrib-4.10.0/modules \
-  -D INSTALL_PYTHON_EXAMPLES=OFF \
-  -D INSTALL_C_EXAMPLES=OFF \
-  -D BUILD_EXAMPLES=OFF
-
-make -j$(nproc)
-sudo make install
-sudo /bin/bash -c 'echo "/usr/local/lib" >> /etc/ld.so.conf.d/opencv.conf'
-sudo ldconfig
-```
-
-Notes:
-
-- Replace `OPENCV_PYTHON3_INSTALL_PATH` and `PYTHON_EXECUTABLE` with your actual Python virtual environment or system Python paths if building Python bindings.
-- If you want a CPU-only OpenCV, omit CUDA-related options.
-
-## Build and run (ROS 2 workspace)
-
-Put this package into your ROS 2 workspace `src` folder or create a new workspace:
-
-```bash
-mkdir -p ~/robot_ws/src
-cd ~/robot_ws/src
-git clone https://github.com/zgfbupt/orbslam3_dense_ros2.git
-cd ../
-colcon build --packages-select orbslam3_dense_ros2
-```
-
-Source the workspace and run the example node:
-
-```bash
-source ~/robot_ws/install/setup.bash
-ros2 run orbslam3_dense_ros2 orb_slam3_main
-```
-
-## References
-
-1. https://github.com/Mechazo11/ros2_orb_slam3
-2. https://github.com/LeonardoDiCaprio1/Map_ORBSLAM_ROS/
-
-## License
-
-This project follows the original project's license (GPLv3). See `LICENSE` for details.
+[ORB-SLAM3](https://github.com/UZ-SLAMLab/ORB_SLAM3)、[ros2_orb_slam3](https://github.com/Mechazo11/ros2_orb_slam3)、
+[Map_ORBSLAM_ROS](https://github.com/LeonardoDiCaprio1/Map_ORBSLAM_ROS) 等开源项目。
